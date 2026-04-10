@@ -1,0 +1,27 @@
+[tools]
+python = "3.13"
+
+[env]
+_.python.venv = { path = ".venv", create = true }
+
+[tasks.setup]
+description = "Install all dependencies (Python packages, system tools)"
+run = """
+  pip install -r requirements.txt
+
+  # TinyTeX for PDF generation (user-local, no root)
+  TINYTEX_BIN="$HOME/Library/TinyTeX/bin"
+  if [ ! -d "$TINYTEX_BIN" ]; then
+    echo "Installing TinyTeX..."
+    curl -sL "https://yihui.org/tinytex/install-bin-unix.sh" | sh
+  fi
+
+  # Add TinyTeX to PATH for this session
+  export PATH="$TINYTEX_BIN/universal-darwin:$TINYTEX_BIN/x86_64-darwin:$TINYTEX_BIN/aarch64-darwin:$PATH"
+
+  # Install required LaTeX packages
+  if command -v tlmgr &> /dev/null; then
+    tlmgr install tabularx enumitem geometry parskip etoolbox booktabs needspace tools extsizes titlesec fancyhdr colortbl 2>/dev/null || true
+  fi
+"""
+

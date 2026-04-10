@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mcp-actions": {
+      "command": "mise",
+      "args": ["exec", "--", "python", "mcp/server.py"],
+      "type": "stdio"
+    }
+  }
+}
