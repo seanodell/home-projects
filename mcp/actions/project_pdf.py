@@ -27,7 +27,7 @@ SCHEMA = {
             },
             "page_size": {
                 "type": "string",
-                "description": "Page size: letter, a4, legal, a5, 4x6 (default: letter)",
+                "description": "Page size: letter, a4, legal, a5, 5x8, 4x6 (default: letter)",
             },
         },
         "required": ["file"],
@@ -250,7 +250,7 @@ def _build_tex(post, page_geometry, font_size="11pt"):
 \documentclass[{font_size}]{{extarticle}}
 \usepackage{{fontspec}}
 \setmainfont{{Avenir Next}}
-\usepackage[{page_geometry},margin=0.25in]{{geometry}}
+\usepackage[{page_geometry},margin=0.25in,includehead,headheight=12pt,headsep=2pt]{{geometry}}
 \usepackage{{tabularx}}
 \usepackage{{booktabs}}
 \usepackage{{colortbl}}

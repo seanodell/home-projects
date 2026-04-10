@@ -16,7 +16,7 @@ mcp_actions_create
       },
       "page_size": {
         "type": "string",
-        "description": "Page size: letter, a4, legal, a5, 4x6 (default: letter)"
+        "description": "Page size: letter, a4, legal, a5, 5x8, 4x6 (default: letter)"
       }
     },
     "required": [

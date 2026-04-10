@@ -2,7 +2,7 @@
 title: mcp_actions_projects
 description: Home project management
 allowed-tools: [Read, Write, Edit, Glob, Bash, AskUserQuestion, mcp_actions_create, mcp_actions_fetch, mcp_actions_update]
-schema-hash: e15277c714
+schema-hash: f775066fc1
 ---
 
 | Action | Description |
