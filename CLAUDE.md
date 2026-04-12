@@ -4,7 +4,7 @@ This repo helps plan, track, and execute home improvement and maintenance projec
 
 ## Tool Usage
 
-1. **MCP action skills first** — Always prefer using an `mcp_actions_*` skill when one covers the task. Check available skills before falling back to other approaches.
+1. **MCP actions first** — Always prefer using the `mcp__mcp-actions__mcp_actions_*` tools (create, fetch, update) when one covers the task. Check available actions before falling back to other approaches.
 2. **Mise tasks second** — If no MCP action fits, use `mise run <task>` when a relevant mise task is defined.
 3. **Bash last, via mise exec** — When raw shell commands are unavoidable, always prefix with `mise exec --` to ensure the correct tool versions are used (e.g. `mise exec -- python script.py`).
 4. **Dependencies** — Python packages go in `requirements.txt`. System tools (brew casks, LaTeX packages, etc.) go in the `mise run setup` task in `mise.toml`. All dependencies MUST be installable via `mise run setup` — never install things ad hoc.
