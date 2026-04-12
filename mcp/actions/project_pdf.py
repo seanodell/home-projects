@@ -252,7 +252,7 @@ def _build_tex(post, page_geometry, font_size="11pt"):
 \documentclass[{font_size}]{{extarticle}}
 \usepackage{{fontspec}}
 \setmainfont{{Avenir Next}}
-\usepackage[{page_geometry},margin=0.25in,includehead,headheight=12pt,headsep=2pt]{{geometry}}
+\usepackage[{page_geometry},margin=0.25in,includehead,headheight=12pt,headsep=2pt,includefoot,footskip=12pt]{{geometry}}
 \usepackage{{tabularx}}
 \usepackage{{booktabs}}
 \usepackage{{colortbl}}
