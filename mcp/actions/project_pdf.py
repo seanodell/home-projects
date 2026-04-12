@@ -27,7 +27,7 @@ SCHEMA = {
             },
             "page_size": {
                 "type": "string",
-                "description": "Page size: letter, a4, legal, a5, 5x8, 4x6 (default: letter)",
+                "description": "Page size: letter, a4, legal, a5, halfletter, 5x8, 4x6 (default: letter)",
             },
         },
         "required": ["file"],
@@ -49,6 +49,7 @@ PAGE_GEOMETRIES = {
     "a4": "a4paper",
     "legal": "legalpaper",
     "a5": "a5paper",
+    "halfletter": "paperwidth=5.5in,paperheight=8.5in",
     "5x8": "paperwidth=5in,paperheight=8in",
     "4x6": "paperwidth=4in,paperheight=6in",
 }
@@ -57,6 +58,7 @@ PAGE_GEOMETRIES = {
 PAGE_FONT_SIZES = {
     "4x6": "9pt",
     "5x8": "10pt",
+    "halfletter": "10pt",
     "a5": "10pt",
     "a4": "11pt",
     "letter": "11pt",
