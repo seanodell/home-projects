@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import tempfile
+from dataclasses import dataclass
 
 import frontmatter
 
@@ -18,7 +19,7 @@ VERB_GROUP = "create"
 SKILL_GROUP = "projects"
 
 SCHEMA = {
-    "description": "Generate a formatted PDF from a project file, keeping sections together on pages",
+    "description": "Generate a formatted PDF from a project file, keeping sections together on pages. Do not assume page_size or page_ordering — if the user doesn't specify them, use AskUserQuestion to ask before generating.",
     "input": {
         "properties": {
             "file": {
@@ -27,14 +28,14 @@ SCHEMA = {
             },
             "page_size": {
                 "type": "string",
-                "description": "Page size: letter, a4, legal, a5, halfletter, 5x8, 4x6 (default: letter)",
+                "description": "Page size: letter, a4, legal, a5, halfletter. Ask the user if not specified.",
             },
-            "booklet": {
-                "type": "boolean",
-                "description": "Impose pages for saddle-stitch booklet printing (halfletter, a5 only)",
+            "page_ordering": {
+                "type": "string",
+                "description": "Page ordering: normal, saddle-stitch, 2-up. Ask the user if not specified.",
             },
         },
-        "required": ["file"],
+        "required": ["file", "page_size", "page_ordering"],
     },
     "output": {
         "properties": {
@@ -48,31 +49,20 @@ SCHEMA = {
 
 TINYTEX_BIN = os.path.expanduser("~/Library/TinyTeX/bin/universal-darwin")
 
-PAGE_GEOMETRIES = {
-    "letter": "letterpaper",
-    "a4": "a4paper",
-    "legal": "legalpaper",
-    "a5": "a5paper",
-    "halfletter": "paperwidth=5.5in,paperheight=8.5in",
-    "5x8": "paperwidth=5in,paperheight=8in",
-    "4x6": "paperwidth=4in,paperheight=6in",
-}
+@dataclass
+class PageSize:
+    geometry: str       # LaTeX geometry string
+    font_size: str      # extarticle font size
+    width: float        # inches, portrait
+    height: float       # inches, portrait
 
-# Font sizes per page size (extarticle supports 9pt, 10pt, 11pt, 12pt, etc.)
-PAGE_FONT_SIZES = {
-    "4x6": "9pt",
-    "5x8": "10pt",
-    "halfletter": "10pt",
-    "a5": "10pt",
-    "a4": "11pt",
-    "letter": "11pt",
-    "legal": "11pt",
-}
 
-# Content page size -> physical sheet paper for booklet imposition
-BOOKLET_SHEETS = {
-    "halfletter": "letterpaper",
-    "a5": "a4paper",
+PAGE_SIZES = {
+    "letter": PageSize("letterpaper", "11pt", 8.5, 11),
+    "a4": PageSize("a4paper", "11pt", 8.267, 11.693),
+    "legal": PageSize("legalpaper", "11pt", 8.5, 14),
+    "a5": PageSize("a5paper", "10pt", 5.827, 8.267),
+    "halfletter": PageSize("paperwidth=5.5in,paperheight=8.5in", "10pt", 5.5, 8.5),
 }
 
 
@@ -317,35 +307,65 @@ def _build_tex(post, page_geometry, font_size="11pt"):
 """
 
 
-def _build_booklet_tex(content_pdf, sheet_paper, signature):
-    """Build a LaTeX wrapper that imposes content pages as a saddle-stitch booklet."""
+def _build_imposition_tex(content_pdf, sheet_w, sheet_h, signature=None):
+    """Build a LaTeX wrapper that imposes content pages 2-up on landscape sheets.
+
+    sheet_w, sheet_h: output sheet dimensions in inches (landscape orientation).
+    With signature: saddle-stitch (pages reordered for folding+stapling).
+    Without signature: sequential 2-up (pages 1,2 then 3,4).
+    """
+    sig_opt = f", signature={signature}" if signature else ""
     return rf"""
-\documentclass[{sheet_paper},landscape]{{article}}
-\usepackage[{sheet_paper},landscape,margin=0pt]{{geometry}}
+\documentclass{{article}}
+\usepackage[paperwidth={sheet_w}in,paperheight={sheet_h}in,margin=0pt]{{geometry}}
 \usepackage{{pdfpages}}
 \begin{{document}}
-\includepdf[pages=-, nup=2x1, signature={signature}]{{{content_pdf}}}
+\includepdf[pages=-, nup=2x1{sig_opt}]{{{content_pdf}}}
 \end{{document}}
 """
 
 
-def run(file, page_size="letter", booklet=False, **kwargs):
+VALID_ORDERINGS = {"normal", "saddle-stitch", "2-up"}
+
+
+def run(file, page_size="letter", page_ordering="normal", **kwargs):
     filepath = PROJECTS_DIR / file
     if not filepath.exists():
         return {"error": f"Project not found: {file}"}
 
     page_size = page_size.lower().strip()
-    if page_size not in PAGE_GEOMETRIES:
-        return {"error": f"Unknown page size: {page_size}. Options: {', '.join(PAGE_GEOMETRIES)}"}
+    if page_size not in PAGE_SIZES:
+        return {"error": f"Unknown page size: {page_size}. Options: {', '.join(PAGE_SIZES)}"}
 
-    if booklet and page_size not in BOOKLET_SHEETS:
-        return {"error": f"Booklet not supported for {page_size}. Options: {', '.join(BOOKLET_SHEETS)}"}
+    if page_ordering not in VALID_ORDERINGS:
+        return {"error": f"Unknown page_ordering: {page_ordering}. Options: {', '.join(sorted(VALID_ORDERINGS))}"}
+
+    page = PAGE_SIZES[page_size]
+    is_booklet = page_ordering in ("saddle-stitch", "2-up")
 
     post = frontmatter.load(str(filepath))
-    font_size = PAGE_FONT_SIZES.get(page_size, "11pt")
-    tex_source = _build_tex(post, PAGE_GEOMETRIES[page_size], font_size)
 
-    suffix = f"{page_size}-booklet" if booklet else page_size
+    if is_booklet:
+        # Content pages are half the requested sheet size
+        # Landscape sheet is (height x width); each half-page content is (height/2 x width)
+        content_w, content_h = page.height / 2, page.width
+        content_geometry = f"paperwidth={content_w:.3f}in,paperheight={content_h:.3f}in"
+        # Font size based on content width
+        if content_w >= 7.5:
+            font_size = "11pt"
+        elif content_w >= 4.5:
+            font_size = "10pt"
+        elif content_w >= 3.5:
+            font_size = "9pt"
+        else:
+            font_size = "8pt"
+    else:
+        content_geometry = page.geometry
+        font_size = page.font_size
+
+    tex_source = _build_tex(post, content_geometry, font_size)
+
+    suffix = f"{page_size}-{page_ordering}" if is_booklet else page_size
     pdf_path = filepath.with_name(f"{filepath.stem}-{suffix}.pdf")
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -368,33 +388,37 @@ def run(file, page_size="letter", booklet=False, **kwargs):
             log = result.stdout.decode("utf-8", errors="replace")
             return {"error": f"lualatex failed:\n{log[-2000:]}"}
 
-        if booklet:
-            # Parse page count from lualatex output to calculate signature size
-            log = result.stdout.decode("utf-8", errors="replace")
-            match = re.search(r"Output written on .+\((\d+) pages?,", log)
-            if not match:
-                return {"error": "Could not determine page count from lualatex output"}
-            page_count = int(match.group(1))
-            signature = ((page_count + 3) // 4) * 4
+        if is_booklet:
+            signature = None
+            if page_ordering == "saddle-stitch":
+                # Parse page count to calculate signature size for saddle-stitch
+                log = result.stdout.decode("utf-8", errors="replace")
+                match = re.search(r"Output written on .+\((\d+) pages?,", log)
+                if not match:
+                    return {"error": "Could not determine page count from lualatex output"}
+                page_count = int(match.group(1))
+                signature = ((page_count + 3) // 4) * 4
 
-            booklet_tex = _build_booklet_tex(
-                content_pdf, BOOKLET_SHEETS[page_size], signature
+            # Output sheet is the requested page in landscape
+            sheet_w, sheet_h = page.height, page.width
+            imposition_tex = _build_imposition_tex(
+                content_pdf, sheet_w, sheet_h, signature
             )
-            booklet_tex_path = os.path.join(tmpdir, "booklet.tex")
-            with open(booklet_tex_path, "w") as f:
-                f.write(booklet_tex)
+            imposition_tex_path = os.path.join(tmpdir, "imposition.tex")
+            with open(imposition_tex_path, "w") as f:
+                f.write(imposition_tex)
 
             result = subprocess.run(
-                ["lualatex", "-interaction=nonstopmode", "-output-directory", tmpdir, booklet_tex_path],
+                ["lualatex", "-interaction=nonstopmode", "-output-directory", tmpdir, imposition_tex_path],
                 capture_output=True,
                 env=env,
                 timeout=30,
             )
 
-            final_pdf = os.path.join(tmpdir, "booklet.pdf")
+            final_pdf = os.path.join(tmpdir, "imposition.pdf")
             if not os.path.exists(final_pdf):
                 log = result.stdout.decode("utf-8", errors="replace")
-                return {"error": f"Booklet imposition failed:\n{log[-2000:]}"}
+                return {"error": f"Imposition failed:\n{log[-2000:]}"}
         else:
             final_pdf = content_pdf
 

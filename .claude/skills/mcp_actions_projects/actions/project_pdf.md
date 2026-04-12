@@ -1,6 +1,6 @@
 # project_pdf
 
-Generate a formatted PDF from a project file, keeping sections together on pages
+Generate a formatted PDF from a project file, keeping sections together on pages. Do not assume page_size or page_ordering — if the user doesn't specify them, use AskUserQuestion to ask before generating.
 
 ## Request
 
@@ -16,11 +16,17 @@ mcp_actions_create
       },
       "page_size": {
         "type": "string",
-        "description": "Page size: letter, a4, legal, a5, 5x8, 4x6 (default: letter)"
+        "description": "Page size: letter, a4, legal, a5, halfletter. Ask the user if not specified."
+      },
+      "page_ordering": {
+        "type": "string",
+        "description": "Page ordering: normal, saddle-stitch, 2-up. Ask the user if not specified."
       }
     },
     "required": [
-      "file"
+      "file",
+      "page_size",
+      "page_ordering"
     ]
   }
 }
