@@ -21,7 +21,7 @@ run = """
 
   # Install required LaTeX packages
   if command -v tlmgr &> /dev/null; then
-    tlmgr install tabularx enumitem geometry parskip etoolbox booktabs needspace tools extsizes titlesec fancyhdr colortbl 2>/dev/null || true
+    tlmgr install tabularx enumitem geometry parskip etoolbox booktabs needspace tools extsizes titlesec fancyhdr colortbl pdfpages 2>/dev/null || true
   fi
 """
 

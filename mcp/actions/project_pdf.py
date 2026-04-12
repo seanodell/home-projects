@@ -29,6 +29,10 @@ SCHEMA = {
                 "type": "string",
                 "description": "Page size: letter, a4, legal, a5, halfletter, 5x8, 4x6 (default: letter)",
             },
+            "booklet": {
+                "type": "boolean",
+                "description": "Impose pages for saddle-stitch booklet printing (halfletter, a5 only)",
+            },
         },
         "required": ["file"],
     },
@@ -63,6 +67,12 @@ PAGE_FONT_SIZES = {
     "a4": "11pt",
     "letter": "11pt",
     "legal": "11pt",
+}
+
+# Content page size -> physical sheet paper for booklet imposition
+BOOKLET_SHEETS = {
+    "halfletter": "letterpaper",
+    "a5": "a4paper",
 }
 
 
@@ -307,7 +317,19 @@ def _build_tex(post, page_geometry, font_size="11pt"):
 """
 
 
-def run(file, page_size="letter", **kwargs):
+def _build_booklet_tex(content_pdf, sheet_paper, signature):
+    """Build a LaTeX wrapper that imposes content pages as a saddle-stitch booklet."""
+    return rf"""
+\documentclass[{sheet_paper},landscape]{{article}}
+\usepackage[{sheet_paper},landscape,margin=0pt]{{geometry}}
+\usepackage{{pdfpages}}
+\begin{{document}}
+\includepdf[pages=-, nup=2x1, signature={signature}]{{{content_pdf}}}
+\end{{document}}
+"""
+
+
+def run(file, page_size="letter", booklet=False, **kwargs):
     filepath = PROJECTS_DIR / file
     if not filepath.exists():
         return {"error": f"Project not found: {file}"}
@@ -316,11 +338,15 @@ def run(file, page_size="letter", **kwargs):
     if page_size not in PAGE_GEOMETRIES:
         return {"error": f"Unknown page size: {page_size}. Options: {', '.join(PAGE_GEOMETRIES)}"}
 
+    if booklet and page_size not in BOOKLET_SHEETS:
+        return {"error": f"Booklet not supported for {page_size}. Options: {', '.join(BOOKLET_SHEETS)}"}
+
     post = frontmatter.load(str(filepath))
     font_size = PAGE_FONT_SIZES.get(page_size, "11pt")
     tex_source = _build_tex(post, PAGE_GEOMETRIES[page_size], font_size)
 
-    pdf_path = filepath.with_name(f"{filepath.stem}-{page_size}.pdf")
+    suffix = f"{page_size}-booklet" if booklet else page_size
+    pdf_path = filepath.with_name(f"{filepath.stem}-{suffix}.pdf")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tex_path = os.path.join(tmpdir, "project.tex")
@@ -337,13 +363,42 @@ def run(file, page_size="letter", **kwargs):
             timeout=30,
         )
 
-        compiled_pdf = os.path.join(tmpdir, "project.pdf")
-        if not os.path.exists(compiled_pdf):
+        content_pdf = os.path.join(tmpdir, "project.pdf")
+        if not os.path.exists(content_pdf):
             log = result.stdout.decode("utf-8", errors="replace")
             return {"error": f"lualatex failed:\n{log[-2000:]}"}
 
-        # Copy to final location
+        if booklet:
+            # Parse page count from lualatex output to calculate signature size
+            log = result.stdout.decode("utf-8", errors="replace")
+            match = re.search(r"Output written on .+\((\d+) pages?,", log)
+            if not match:
+                return {"error": "Could not determine page count from lualatex output"}
+            page_count = int(match.group(1))
+            signature = ((page_count + 3) // 4) * 4
+
+            booklet_tex = _build_booklet_tex(
+                content_pdf, BOOKLET_SHEETS[page_size], signature
+            )
+            booklet_tex_path = os.path.join(tmpdir, "booklet.tex")
+            with open(booklet_tex_path, "w") as f:
+                f.write(booklet_tex)
+
+            result = subprocess.run(
+                ["lualatex", "-interaction=nonstopmode", "-output-directory", tmpdir, booklet_tex_path],
+                capture_output=True,
+                env=env,
+                timeout=30,
+            )
+
+            final_pdf = os.path.join(tmpdir, "booklet.pdf")
+            if not os.path.exists(final_pdf):
+                log = result.stdout.decode("utf-8", errors="replace")
+                return {"error": f"Booklet imposition failed:\n{log[-2000:]}"}
+        else:
+            final_pdf = content_pdf
+
         import shutil
-        shutil.copy(compiled_pdf, str(pdf_path))
+        shutil.copy(final_pdf, str(pdf_path))
 
     return {"pdf": str(pdf_path)}
